@@ -1,0 +1,13 @@
+--git init
+	git clone https://github.com/LucasLuigi/voiture
+	cd voiture --se mettre dans le dossier du projet
+	git add Fichieràinclureauprojet
+	git commit -a --écrire ce qu'on a modifié
+	git push
+
+Envoyer les modifs (avoir fait les étapes d'avant) :
+	git push
+Récupérer les modifs :
+	git pull
+Savoir où on en est par rapport au projet online (à faire avant toute opération) :
+	git status
