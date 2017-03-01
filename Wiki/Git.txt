@@ -1,21 +1,23 @@
 Structure des dossiers : /.../dossier_parent/voiture, /.../dossier_parent/autre_projet_git
+
 Dans dossier_parent : 
-PREMIERE UTILISATION : Initialiser son compte avec : 
+0) PREMIERE UTILISATION : Initialiser son compte avec : 
 	git config --global user.name "Username"
 	git config --global user.email "youremail@domain.com"
 Se crée le fichier ~/.gitconfig
 	
-Chaque fois qu'on importe un projet, il faut initialiser le dossier_parent en tant que dossier Git avec :
+1) Chaque fois qu'on importe un projet pour la première fois, il faut initialiser le dossier_parent en tant que dossier Git avec :
 	git init
-Télécharger le projet :
+2) Télécharger le projet :
 	git clone https://github.com/LucasLuigi/voiture -- ou : git clone git://<dépot>
 	cd voiture --se mettre dans le dossier du projet
-Si on fait une modif sur le PC et qu'on veut l'upload sur Git :
+3) Si on fait une modif sur le PC et qu'on veut l'upload sur Git :
 	git add Fichieràinclureauprojet
 	git commit -a --Préparer sur le PC la nouvelle version du projet écrire ce qu'on a modifié
 	git push --push vers le serveur Git le projet avec les modifs qu'on a faites sur le PC
 
-Envoyer les modifs (avoir fait les étapes d'avant ; upload le commit du projet) :
+4) Commandes importantes
+Envoyer les modifs (après avoir fait les étapes d'avant ; upload le commit du projet) :
 	git push
 Récupérer les modifs (téléchager le projet du serveur vers notre PC)
 	git pull
@@ -23,5 +25,9 @@ Savoir où on en est par rapport au projet online (à faire avant toute opérati
 	git status
 
 IMPORTANT : Si il y a des modifs sur le serveur et sur notre PC, Git acceptera pas. TOUJOURS vérifier que la version PC est bien à jour avant de la modifier (avec git status)
+
+5) Un point sur les branch :
+Pour un même projet Git, il est possible d'avoir plusieurs versions du projet initial. Ces versions se nomment des branchs. Il y a une branch par défaut : la branch master. C'est la version initiale et centrale. Exemple pour un Git contenant la source d'un kernel Linux : branch peut être la dernière version du noyau, et il peut exister des branchs kernel_3.10.17, kernel_3.18, etc...
+On peut créer une branch à partir d'une branch existante (master par ex) et aussi on peut merge avec une autre branch.
 
 Plus d'infos : http://rogerdudler.github.io/git-guide/index.fr.html

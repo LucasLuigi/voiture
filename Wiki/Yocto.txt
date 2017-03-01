@@ -1,0 +1,60 @@
+ROOTFS:
+
+1) Recuperer les dependances utiles : (Ubuntu 14.04 LTS)
+
+sudo apt-get install gcc g++ gawk wget git-core diffstat unzip texinfo valgrind git gitg doxygen gcovr phablet-tools bc chrpath #les dependances deja presents ne seront pas reinstalles
+sudo apt-get update #dans l'ideal pour etre sur que tout soit a jour
+
+2) Telecharger le programme repo et le mettre dans le PATH :
+
+##Telehargement du exe repo
+mkdir ~/bin
+curl http://commondatastorage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+chmod a+x ~/bin/repo
+PATH=~/bin:${PATH} #ainsi, pour executer repo, plus besoin de faire ./repo ou ~/bin/repo mais juste repo ; NE PAS SUPPRIMER LE DOSSIER ~/bin (sinon plus de repo)
+
+3) Creer le dossier BSP, init et download  le BSP (A Board Support Package (BSP) is a collection of information that defines how to support a particular hardware device, set of devices, or hardware platform.). Telecharge tout ce qui est necessaire a builder :
+
+##Creer un dossier de BSP ; pas au même endroit que ~/bin ; le mettre par exemple dans le ~.
+mkdir fsl-community-bsp
+cd fsl-community-bsp
+
+##Init le repository ; on télécharge le BSP (la "version de Yocto" qu'il faut. D'après Julien², c'est daisy)
+
+repo init -u https://github.com/Freescale/fsl-community-bsp-platform -b daisy #branch daisy du Git
+repo sync #attention marche pas si connecté à l'INSA
+
+4) Setup l'environnement et cree le build directory :
+
+export MACHINE=wandboard-solo ##precise la machine
+./setup-environment build
+
+5) Packages supplementaires a ajouter a l'image avant le build - PAS SUR QUE CA MARCHE ET A L'AIR FACULTATIF POUR L'UTILISATION QU'ON FERA DE NOTRE CARTE:
+##A savoir : Poky est une distribution de Yocto Project qui contient notamment le builder BitBake.
+
+##Modifier le fichier conf du build :
+gedit ./sources/poky/build/conf/local.conf
+
+Ajouter a la fin :
+CORE_IMAGE_EXTRA_INSTALL_append = "iperf glive gst-plugins-good-isomp4 memtester alsa-utils alsa-tools evtest imx-test perl lmbench glmark2 mesa-demos gst-meta-audio gst-meta-video gst-plugins-good-udp gst-plugins-good-rtp gst-plugins-good-rtpmanager gst-plugins-good-rtsp gst-plugins-good-video4linux2 libconfig wpa-supplicant dropbear" ##ATTENTION : c'est pour core-image-x11 or nous non ; ça a l'air d'être des packets graphiques (plugin video...)
+
+6) Build :
+
+bitbake core-image-minimal #ou bitbake core-image-x11
+
+7) Mettre l'image sur la carte microSD :
+
+sudo dd if=tmp/deploy/images/wandboard-solo/core-image-minimal-wandboard-solo.sdcard of=/dev/sdX bs=1M #REMPLACER SDX PAR LE SD DE LA MICROSD
+
+Plus d'infos :
+http://wiki.wandboard.org/index.php/Getting_started_with_Yocto_on_Wandboard
+https://github.com/Freescale/fsl-community-bsp-platform/tree/daisy
+http://wiki.wandboard.org/Wandboard_Linux_Kernel_3.10.17_Status
+
+#-----------------------------------------------------------
+
+KERNEL :
+
+https://github.com/wandboard-org/linux/tree/wandboard_imx_3.10.17_1.0.0_beta
+
+U-BOOT :
