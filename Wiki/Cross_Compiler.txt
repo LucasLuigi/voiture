@@ -1,0 +1,41 @@
+1) Télécharger le compilateur croisé : (n'importe où)
+
+	wget -c https://releases.linaro.org/components/toolchain/binaries/5.3-2016.05/arm-linux-gnueabihf/gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf.tar.xz
+
+2) Le désarchiver : (n'importe où ; ici dans ~)
+
+	tar xf gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf.tar.xz
+
+#-------------------------------------------------------------------------
+
+COMPILER A LA MAIN
+
+1) A FAIRE SI ON VEUT COMPILER A LA MAIN. SINON, TOUT FAIT DANS LE MAKEFILE CI-JOINT. Créer variable CC et ARCH et les rendre globales. Pour que ces variables n'existent que dans le cadre du terminal, simplement écrire ces commandes. Pour que CC et ARCH existent à jamais, modifier ~/.bashrc et rajouter ces commandes (.bashrc est executé à chaque ouverture de terminal ; réouvrir le terminal actuel pour que ça marche donc) :
+
+	export CC=$votre dossier où gcc-linaro a été désarchivé$/gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-
+	export ARCH=arm
+
+2) Test du cross-compiler GCC :
+
+	${CC}gcc --version
+
+Renvoie "arm-linux-gnueabihf-gcc (Linaro GCC 5.3-2016.05) 5.3.1 20160412
+Copyright (C) 2015 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+
+3) Pour compiler à la main (se renseigner un peu plus) :
+
+	${CC}gcc
+
+(équivalent tout simplement à "$votre dossier où gcc-linaro a été désarchivé$/gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc" qui est l'executable gcc CC.)
+
+#-------------------------------------------------------------------------
+
+MAKEFILE
+
+ETAPE INTERMEDIAIRE : rajouter dans le path le dossier des bin du gcc CC. Modifier dans ~/.bashrc (pour que ce soit définitif) : "export PATH=$PATH:~/gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf/bin/" (à adapter en fonction de l'adresse)
+
+ARCH : architecture (l'architecture du PC est visible si on tape uname -m. Mon PC (et le vôtre aussi : x86_64). La carte : arm
+COMPILER : compilateur utilisé (ici ~/gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc)
+KERNELDIR : dossier du kernel avec les includes utilisés (le 3.10.17, les sources qu'on build sur la carte)

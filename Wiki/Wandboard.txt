@@ -56,48 +56,20 @@ KERNEL :
 
 (Voir https://eewiki.net/display/linuxonarm/Wandboard)
 
-1) Cross-compiler :
-Télécharger le compilateur croisé :
-
-	wget -c https://releases.linaro.org/components/toolchain/binaries/5.3-2016.05/arm-linux-gnueabihf/gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf.tar.xz
-
-Le désarchiver :
-
-	tar xf gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf.tar.xz
-
-Créer variable CC et ARCH et les rendre globales. Pour que ces variables n'existent que dans le cadre du terminal, simplement écrire ces commandes. Pour que CC et ARCH existent à jamais, modifier ~/.bashrc et rajouter ces commandes (.bashrc est executé à chaque ouverture de terminal ; réouvrir le terminal actuel pour que ça marche donc) :
-
-	export CC=$votre dossier où gcc-linaro a été désarchivé$/gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-
-	export ARCH=arm
-
-Test du cross-compiler GCC :
-
-	${CC}gcc --version
-
-Renvoie "arm-linux-gnueabihf-gcc (Linaro GCC 5.3-2016.05) 5.3.1 20160412
-Copyright (C) 2015 Free Software Foundation, Inc.
-This is free software; see the source for copying conditions.  There is NO
-warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
-
-Pour compiler (se renseigner un peu plus) :
-
-	${CC}gcc
-
-(équivalent tout simplement à "$votre dossier où gcc-linaro a été désarchivé$/gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc" qui est l'executable gcc CC.)
 
 A) Premier tuto : https://eewiki.net/display/linuxonarm/Wandboard
 
-	2) Récupérer les scripts qui vont builder le kernel :
+	1) Récupérer les scripts qui vont builder le kernel :
 
 		git clone https://github.com/RobertCNelson/armv7-multiplatform
 		cd armv7-multiplatform/
 		git checkout origin/v3.10.x -b tmp
 
-	3) Ajouter les dépendances :
+	2) Ajouter les dépendances :
 
 		sudo apt-get install device-tree-compiler lzma lzop u-boot-tools libncurses5-dev:amd64 libc6:i386 libncurses5:i386 libstdc++6:i386 zlib1g:i386
 
-	4) Modifier system.sh :
+	3) Modifier system.sh :
 	"###REQUIRED:
 	#ARM GCC CROSS Compiler:
 	CC=~/ACTIA/Wandboard/gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-
@@ -107,15 +79,15 @@ A) Premier tuto : https://eewiki.net/display/linuxonarm/Wandboard
 	##For Freescale: i.mx6q/dl/solo:
 	#ZRELADDR=0x10008000"
 
-	Le CC est équivalent à l'étape 1 ; évite que ça retélécharge le cross-compiler. LINUX_GIT permet de préciser l'adresse d'un kernel déjà téléchargé (ici git clone https://github.com/wandboard-org/linux/ -b wandboard_imx_3.10.17_1.0.0_beta) pour pas qu'il en retélécharge un autre. ZRELADDR précise qu'on va compiler le kernel sur une imx6
+	Le CC est équivalent à la mise en place du cross-compiler ; évite que ça retélécharge le cross-compiler. LINUX_GIT permet de préciser l'adresse d'un kernel déjà téléchargé (ici git clone https://github.com/wandboard-org/linux/ -b wandboard_imx_3.10.17_1.0.0_beta) pour pas qu'il en retélécharge un autre. ZRELADDR précise qu'on va compiler le kernel sur une imx6
 
-	5) Build :
+	4) Build :
 
 		./build_kernel.sh #équivalent à $dossier du Git$/armv7-multiplatform/build_kernel.sh
 
 B) Deuxième tuto : http://wiki.wandboard.org/Kernel_Compile
 
-	2) Récupérer le Kernel :
+	1) Récupérer le Kernel :
 	
 		git clone -b wandboard git://repo.or.cz/w/wandboard.git
 	
@@ -125,7 +97,7 @@ B) Deuxième tuto : http://wiki.wandboard.org/Kernel_Compile
 
 		git clone https://github.com/wandboard-org/linux/ -b wandboard_imx_3.10.17_1.0.0_beta
 	
-	3) Configure Kernel :
+	2) Configure Kernel :
 	
 	Either configure your kernel yourself using :
 		make menuconfig
@@ -133,7 +105,7 @@ B) Deuxième tuto : http://wiki.wandboard.org/Kernel_Compile
 		make wandboard_defconfig
 	It is possible, even recommended that you do both: first make the wandboard default config to get most configuration options right, and then customize the config to your needs. 
 
-	4) Compile ;
+	3) Compile ;
 
 		make uImage
 	
