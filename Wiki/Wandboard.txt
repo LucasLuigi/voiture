@@ -55,6 +55,16 @@ http://wiki.wandboard.org/Wandboard_Linux_Kernel_3.10.17_Status
 
 KERNEL :
 
-https://github.com/wandboard-org/linux/tree/wandboard_imx_3.10.17_1.0.0_beta
+Voir https://eewiki.net/display/linuxonarm/Wandboard
+
+1) Crossed compiler :
+Télécharger le compilateur croisé, le désarchiver et exporter CC ; compiler avec
+
+${CC}gcc
+
+
+(https://github.com/wandboard-org/linux/tree/wandboard_imx_3.10.17_1.0.0_beta)
+
+#-----------------------------------------------------------
 
 U-BOOT :
