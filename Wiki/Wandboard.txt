@@ -2,49 +2,48 @@ ROOTFS:
 
 1) Recuperer les dependances utiles : (Ubuntu 14.04 LTS)
 
-sudo apt-get install gcc g++ gawk wget git-core diffstat unzip texinfo valgrind git gitg doxygen gcovr phablet-tools bc chrpath #les dependances deja presents ne seront pas reinstalles
-sudo apt-get update #dans l'ideal pour etre sur que tout soit a jour
+	sudo apt-get install gcc g++ gawk wget git-core diffstat unzip texinfo valgrind git gitg doxygen gcovr phablet-tools bc chrpath #les dependances deja presents ne seront pas reinstalles
+	sudo apt-get update #dans l'ideal pour etre sur que tout soit a jour
 
 2) Telecharger le programme repo et le mettre dans le PATH :
 
 ##Telehargement du exe repo
-mkdir ~/bin
-curl http://commondatastorage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-chmod a+x ~/bin/repo
-PATH=~/bin:${PATH} #ainsi, pour executer repo, plus besoin de faire ./repo ou ~/bin/repo mais juste repo ; NE PAS SUPPRIMER LE DOSSIER ~/bin (sinon plus de repo)
+	mkdir ~/bin
+	curl http://commondatastorage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+	chmod a+x ~/bin/repo
+	PATH=~/bin:${PATH} #ainsi, pour executer repo, plus besoin de faire ./repo ou ~/bin/repo mais juste repo ; NE PAS SUPPRIMER LE DOSSIER ~/bin (sinon plus de repo)
 
 3) Creer le dossier BSP, init et download  le BSP (A Board Support Package (BSP) is a collection of information that defines how to support a particular hardware device, set of devices, or hardware platform.). Telecharge tout ce qui est necessaire a builder :
 
 ##Creer un dossier de BSP ; pas au même endroit que ~/bin ; le mettre par exemple dans le ~.
-mkdir fsl-community-bsp
-cd fsl-community-bsp
+	mkdir fsl-community-bsp
+	cd fsl-community-bsp
 
 ##Init le repository ; on télécharge le BSP (la "version de Yocto" qu'il faut. D'après Julien², c'est daisy)
-
-repo init -u https://github.com/Freescale/fsl-community-bsp-platform -b daisy #branch daisy du Git
-repo sync #attention marche pas si connecté à l'INSA
+	repo init -u https://github.com/Freescale/fsl-community-bsp-platform -b daisy #branch daisy du Git
+	repo sync #attention marche pas si connecté à l'INSA
 
 4) Setup l'environnement et cree le build directory :
 
-export MACHINE=wandboard-solo ##precise la machine
-./setup-environment build
+	export MACHINE=wandboard-solo ##precise la machine
+	./setup-environment build
 
 5) Packages supplementaires a ajouter a l'image avant le build - PAS SUR QUE CA MARCHE ET A L'AIR FACULTATIF POUR L'UTILISATION QU'ON FERA DE NOTRE CARTE:
 ##A savoir : Poky est une distribution de Yocto Project qui contient notamment le builder BitBake.
 
 ##Modifier le fichier conf du build :
-gedit ./sources/poky/build/conf/local.conf
+	gedit ./sources/poky/build/conf/local.conf
 
 Ajouter a la fin :
-CORE_IMAGE_EXTRA_INSTALL_append = "iperf glive gst-plugins-good-isomp4 memtester alsa-utils alsa-tools evtest imx-test perl lmbench glmark2 mesa-demos gst-meta-audio gst-meta-video gst-plugins-good-udp gst-plugins-good-rtp gst-plugins-good-rtpmanager gst-plugins-good-rtsp gst-plugins-good-video4linux2 libconfig wpa-supplicant dropbear" ##ATTENTION : c'est pour core-image-x11 or nous non ; ça a l'air d'être des packets graphiques (plugin video...)
+	CORE_IMAGE_EXTRA_INSTALL_append = "iperf glive gst-plugins-good-isomp4 memtester alsa-utils alsa-tools evtest imx-test perl lmbench glmark2 mesa-demos gst-meta-audio gst-meta-video gst-plugins-good-udp gst-plugins-good-rtp gst-plugins-good-rtpmanager gst-plugins-good-rtsp gst-plugins-good-video4linux2 libconfig wpa-supplicant dropbear" ##ATTENTION : c'est pour core-image-x11 or nous non ; ça a l'air d'être des packets graphiques (plugin video...)
 
 6) Build :
 
-bitbake core-image-minimal #ou bitbake core-image-x11
+	bitbake core-image-minimal #ou bitbake core-image-x11
 
 7) Mettre l'image sur la carte microSD :
 
-sudo dd if=tmp/deploy/images/wandboard-solo/core-image-minimal-wandboard-solo.sdcard of=/dev/sdX bs=1M #REMPLACER SDX PAR LE SD DE LA MICROSD
+	sudo dd if=tmp/deploy/images/wandboard-solo/core-image-minimal-wandboard-solo.sdcard of=/dev/sdX bs=1M #REMPLACER SDX PAR LE SD DE LA MICROSD
 
 Plus d'infos :
 http://wiki.wandboard.org/index.php/Getting_started_with_Yocto_on_Wandboard
@@ -55,15 +54,93 @@ http://wiki.wandboard.org/Wandboard_Linux_Kernel_3.10.17_Status
 
 KERNEL :
 
-Voir https://eewiki.net/display/linuxonarm/Wandboard
+(Voir https://eewiki.net/display/linuxonarm/Wandboard)
 
-1) Crossed compiler :
-Télécharger le compilateur croisé, le désarchiver et exporter CC ; compiler avec
+1) Cross-compiler :
+Télécharger le compilateur croisé :
 
-${CC}gcc
+	wget -c https://releases.linaro.org/components/toolchain/binaries/5.3-2016.05/arm-linux-gnueabihf/gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf.tar.xz
 
+Le désarchiver :
 
-(https://github.com/wandboard-org/linux/tree/wandboard_imx_3.10.17_1.0.0_beta)
+	tar xf gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf.tar.xz
+
+Créer variable CC et ARCH et les rendre globales. Pour que ces variables n'existent que dans le cadre du terminal, simplement écrire ces commandes. Pour que CC et ARCH existent à jamais, modifier ~/.bashrc et rajouter ces commandes (.bashrc est executé à chaque ouverture de terminal ; réouvrir le terminal actuel pour que ça marche donc) :
+
+	export CC=$votre dossier où gcc-linaro a été désarchivé$/gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-
+	export ARCH=arm
+
+Test du cross-compiler GCC :
+
+	${CC}gcc --version
+
+Renvoie "arm-linux-gnueabihf-gcc (Linaro GCC 5.3-2016.05) 5.3.1 20160412
+Copyright (C) 2015 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+
+Pour compiler (se renseigner un peu plus) :
+
+	${CC}gcc
+
+(équivalent tout simplement à "$votre dossier où gcc-linaro a été désarchivé$/gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc" qui est l'executable gcc CC.)
+
+A) Premier tuto : https://eewiki.net/display/linuxonarm/Wandboard
+
+	2) Récupérer les scripts qui vont builder le kernel :
+
+		git clone https://github.com/RobertCNelson/armv7-multiplatform
+		cd armv7-multiplatform/
+		git checkout origin/v3.10.x -b tmp
+
+	3) Ajouter les dépendances :
+
+		sudo apt-get install device-tree-compiler lzma lzop u-boot-tools libncurses5-dev:amd64 libc6:i386 libncurses5:i386 libstdc++6:i386 zlib1g:i386
+
+	4) Modifier system.sh :
+	"###REQUIRED:
+	#ARM GCC CROSS Compiler:
+	CC=~/ACTIA/Wandboard/gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-
+	###OPTIONAL:
+	###OPTIONAL: LINUX_GIT: specify location of locally cloned git tree.
+	LINUX_GIT=/home/lukko/ACTIA/Git/linux
+	##For Freescale: i.mx6q/dl/solo:
+	#ZRELADDR=0x10008000"
+
+	Le CC est équivalent à l'étape 1 ; évite que ça retélécharge le cross-compiler. LINUX_GIT permet de préciser l'adresse d'un kernel déjà téléchargé (ici git clone https://github.com/wandboard-org/linux/ -b wandboard_imx_3.10.17_1.0.0_beta) pour pas qu'il en retélécharge un autre. ZRELADDR précise qu'on va compiler le kernel sur une imx6
+
+	5) Build :
+
+		./build_kernel.sh #équivalent à $dossier du Git$/armv7-multiplatform/build_kernel.sh
+
+B) Deuxième tuto : http://wiki.wandboard.org/Kernel_Compile
+
+	2) Récupérer le Kernel :
+	
+		git clone -b wandboard git://repo.or.cz/w/wandboard.git
+	
+	/!\ Erreur, et il y a pas la v3.10
+	
+	Kernel de substitution :
+
+		git clone https://github.com/wandboard-org/linux/ -b wandboard_imx_3.10.17_1.0.0_beta
+	
+	3) Configure Kernel :
+	
+	Either configure your kernel yourself using :
+		make menuconfig
+	, or use a default configuration like :
+		make wandboard_defconfig
+	It is possible, even recommended that you do both: first make the wandboard default config to get most configuration options right, and then customize the config to your needs. 
+
+	4) Compile ;
+
+		make uImage
+	
+	Multi-core compile : ajouter -j 4 (quadcores)
+	Compiler des modules :
+	
+		make modules
 
 #-----------------------------------------------------------
 
