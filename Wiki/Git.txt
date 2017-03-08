@@ -9,12 +9,12 @@ Se crée le fichier ~/.gitconfig
 1) Chaque fois qu'on importe un projet pour la première fois, il faut initialiser le dossier_parent en tant que dossier Git avec :
 	git init
 2) Télécharger le projet :
-	git clone https://github.com/LucasLuigi/voiture -- ou : git clone git://<dépot>
-	cd voiture --se mettre dans le dossier du projet
+	git clone https://github.com/LucasLuigi/voiture #ou : git clone git://<dépot>
+	cd voiture #se mettre dans le dossier du projet
 3) Si on fait une modif sur le PC et qu'on veut l'upload sur Git :
 	git add Fichieràinclureauprojet
-	git commit -a --Préparer sur le PC la nouvelle version du projet écrire ce qu'on a modifié
-	git push --push vers le serveur Git le projet avec les modifs qu'on a faites sur le PC
+	git commit -a #Préparer sur le PC la nouvelle version du projet écrire ce qu'on a modifié
+	git push #push vers le serveur Git le projet avec les modifs qu'on a faites sur le PC
 
 4) Commandes importantes
 Envoyer les modifs (après avoir fait les étapes d'avant ; upload le commit du projet) :
