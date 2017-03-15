@@ -39,3 +39,7 @@ ETAPE INTERMEDIAIRE : rajouter dans le path le dossier des bin du gcc CC. Modifi
 ARCH : architecture (l'architecture du PC est visible si on tape uname -m. Mon PC (et le vôtre aussi : x86_64). La carte : arm
 COMPILER : compilateur utilisé (ici ~/gcc-linaro-5.3.1-2016.05-x86_64_arm-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc)
 KERNELDIR : dossier du kernel avec les includes utilisés (le 3.10.17, les sources qu'on build sur la carte)
+
+#-------------------------------------------------------------------------
+
+Dans KERNELDIR : mettre les SOURCES du kernel ou le build ?
