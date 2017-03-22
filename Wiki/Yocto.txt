@@ -1,0 +1,45 @@
+0) Init. Téléchargement de fsl-community-bsp :
+
+a) Recuperer les dependances utiles : (Ubuntu 14.04 LTS)
+
+	sudo apt-get install gcc g++ gawk wget git-core diffstat unzip texinfo valgrind git gitg doxygen gcovr phablet-tools bc chrpath #les dependances deja presents ne seront pas reinstalles
+	sudo apt-get update #dans l'ideal pour etre sur que tout soit a jour
+
+b) Telecharger le programme repo et le mettre dans le PATH :
+
+##Telehargement du exe repo
+	mkdir ~/bin
+	curl http://commondatastorage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+	chmod a+x ~/bin/repo
+	PATH=~/bin:${PATH} #ainsi, pour executer repo, plus besoin de faire ./repo ou ~/bin/repo mais juste repo ; NE PAS SUPPRIMER LE DOSSIER ~/bin (sinon plus de repo)
+
+c) Creer le dossier BSP, init et download  le BSP (A Board Support Package (BSP) is a collection of information that defines how to support a particular hardware device, set of devices, or hardware platform.). Telecharge tout ce qui est necessaire a builder :
+
+##Creer un dossier de BSP ; pas au même endroit que ~/bin ; le mettre par exemple dans le ~.
+	mkdir fsl-community-bsp
+	cd fsl-community-bsp
+
+##Init le repository ; on télécharge le BSP (la "version de Yocto" qu'il faut. D'après Julien², c'est daisy)
+	repo init -u https://github.com/Freescale/fsl-community-bsp-platform -b daisy #branch daisy du Git
+	repo sync #attention marche pas si connecté à l'INSA
+
+d) Setup l'environnement et cree le build directory :
+
+	export MACHINE=wandboard-solo ##precise la machine
+	## Dans fsl-community-bsp
+	. ./setup-environment build
+
+e) Ajout du bitbake directory dans le PATH
+
+	export PATH=~/fsl-community-bsp/sources/poky/bitbake/bin/:${PATH}
+
+f) Si besoin :
+
+	sudo apt-get install libsdl1.2-dev
+
+1) Faire le bitbake :
+
+	## Dans le dossier ~/fsl-community-bsp/build
+	bitbake core-image-minimal
+
+
