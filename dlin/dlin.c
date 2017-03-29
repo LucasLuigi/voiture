@@ -9,6 +9,7 @@
 #include <linux/errno.h> /* error codes */
 #include <linux/if_arp.h> /* CAN identifier */
 #include <linux/if.h>
+#include <linux/hrtimer.h>
 #include <linux/can.h>
 #include <linux/sched.h> /*task_struct describe process/task in the system */
 #include <linux/tty.h>
@@ -71,6 +72,7 @@ struct dlin {
 	     int			            tx_lim;         /* actual limit of bytes to Tx */
        int             	    tx_cnt;         /* number of already Tx bytes */
        char            	    lin_master;     /* node is a master node */
+			 int                  lin_baud;       /* LIN baudrate */
        int			            lin_state;	/* state */
        char			            id_to_send;	/* there is ID to be sent */
        char                 data_to_send;   /* there are data to be sent */
@@ -78,15 +80,24 @@ struct dlin {
        struct task_struct  *kwthread; /* struct describing the kernel worker thread */
        dev_t                line; /* struct with major and minor numbers of the device */
        struct tty_struct    *tty; /* ptr to TTY structure*/
+			 char									rx_len_unknown; /* We are not sure how much data will be sent to us --
+						   																 we just guess the length */
        unsigned long        flags;
 #define DLF_INUSE           0     /*channel in use */
+#define DLF_ERROR           1     /* Parity, etc. error        */
+#define DLF_RXEVENT	        2     /* Rx wake event             */
+#define DLF_TXEVENT	        3     /* Tx wake event             */
 #define DLF_MSGEVENT	      4 /* CAN message to sent   */
+#define DLF_TMOUTEVENT			5 /* Timeout on received data */
+#define DLF_TXBUFF_RQ	      6     /* Req. to send buffer to UART*/
+#define DLF_TXBUFF_INPR	    7     /* Above request in progress */
         struct sk_buff      *tx_req_skb;	/* Socket buffer with CAN frame
 						                                 received from network stack*/
 
        /* List with configurations for each of 0 to LIN_ID_MAX LIN IDs */
        struct dlin_conf_entry linfr_cache[LIN_ID_MAX + 1];
        wait_queue_head_t	  kwt_wq; /* Wait queue used by kwthread */
+			 struct hrtimer				rx_timer;/* RX timeout timer */
        spinlock_t           linframe_lock; /*frame cache and buffers lock*/
 };
 
@@ -232,6 +243,76 @@ static void dlin_send_rtr(struct dlin *dl) /* remote trasnmission request */
 		CAN_RTR_FLAG, NULL, 0);
 }
 
+/*
+ * Called by the driver when there's room for more data.  If we have
+ * more packets to send, we send them here.
+ */
+static void dlin_write_wakeup(struct tty_struct *tty)
+{
+	int actual = 0;
+	int remains;
+	struct dlin *dl = (struct dlin *) tty->disc_data; //dl takes the tty data
+
+	/* First make sure we're connected. */
+	if (!dl || dl->magic != DLIN_MAGIC || !netif_running(dl->dev)) /* Check if we are not already connected (cf  dlin_tty_alloc) + Test if the device has been brought up. */
+		return;
+
+	set_bit(DLF_TXBUFF_RQ, &dl->flags); //Request to send buffer to UART
+	do {
+	  //Set a bit and return its old value if the condition is false
+	  if (unlikely(test_and_set_bit(DLF_TXBUFF_INPR, &dl->flags)))
+	    return;	 //the above request is in progress
+
+		clear_bit(DLF_TXBUFF_RQ, &dl->flags);
+
+/* We need to barrier before modifying the word, since the _atomic_xxx()
+   routines just tns the lock and then read/modify/write of the word.
+   But after the word is updated, the routine issues an "mf" before returning,
+   and since it's a function call, we don't even need a compiler barrier.*/
+
+		//smp_mb__after_clear_bit(); //< KERNEL_VERSION(3, 18, 0)
+		smp_mb__after_atomic();
+
+
+		if (dl->lin_state != DSTATE_BREAK_SENT)
+		  remains = dl->tx_lim - dl->tx_cnt; //Tx bytes remaining
+
+		else //if BREAK SENT
+		  remains = DLIN_BUFF_BREAK /* = 0 */ + 1 - dl->tx_cnt;
+		// remains <= 0 if bytes have already been transmitted
+
+		if (remains > 0) {
+
+			actual = tty->ops->write(tty, dl->tx_buff + dl->tx_cnt,
+						 dl->tx_cnt - dl->tx_lim); // (tty, msg, length msg)
+			// actual = number of characters written
+			dl->tx_cnt += actual; //bytes Tx += char written
+			remains -= actual; //remains -= char written
+		}
+
+		clear_bit(DLF_TXBUFF_INPR, &dl->flags); //request finished
+
+		//smp_mb__after_clear_bit();// < KERNEL_VERSION(3, 18, 0)
+		smp_mb__after_atomic();
+
+
+	} while (unlikely(test_bit(DLF_TXBUFF_RQ, &dl->flags))); //while no request sent
+
+	if ((remains > 0) && (actual >= 0)) {
+		netdev_dbg(dl->dev, "dlin_write_wakeup sent %d, remains %d, waiting\n",
+			   dl->tx_cnt, dl->tx_lim - dl->tx_cnt);
+		return;
+	}
+	clear_bit(TTY_DO_WRITE_WAKEUP, &tty->flags);
+// TTY_DO_WRITE_WAKEUP = 5 when set call write_wakeup after queuing new
+	set_bit(DLF_TXEVENT, &dl->flags); //a Tx wake event happened
+	wake_up(&dl->kwt_wq); // wake up threads blocked on a waitqueue
+	netdev_dbg(dl->dev, "dlin_write_wakeup sent %d, wakeup\n", dl->tx_cnt);
+}
+
+
+
+
 
 /*
  * DLl_tx() -- Send a can_frame to a TTY queue.
@@ -338,6 +419,88 @@ static void dlin_setup(struct net_device *dev)
         dev->features       = NETIF_F_HW_CSUM; /* checksum all pkt at hw level (netdevice.h) */
 }
 
+static void dlin_master_receive_buf(struct tty_struct *tty,
+			      const unsigned char *cp, char *fp, int count)
+{
+	struct dlin *dl = (struct dlin *) tty->disc_data;
+
+	/* Read the characters out of the buffer */
+	while (count--) {
+		if (fp && *fp++) {
+			netdev_dbg(dl->dev, "dlin_master_receive_buf char 0x%02x ignored "
+				"due marker 0x%02x, flags 0x%lx\n",
+				*cp, *(fp-1), dl->flags);
+
+			/* i.e. Real error -- not Break */
+			if (dl->rx_cnt > DLIN_BUFF_BREAK) {
+			  set_bit(DLF_ERROR, &dl->flags); //error flag set
+			  wake_up(&dl->kwt_wq);
+			  return;
+			}
+		}
+
+#ifndef BREAK_BY_BAUD
+		/* We didn't receive Break character -- fake it! */
+		if ((dl->rx_cnt == DLIN_BUFF_BREAK) && (*cp == 0x55)) {
+			netdev_dbg(dl->dev, "LIN_RX[%d]: 0x00\n", dl->rx_cnt);
+			dl->rx_buff[dl->rx_cnt++] = 0x00;
+		}
+#endif /* BREAK_BY_BAUD */
+
+		if (dl->rx_cnt < DLIN_BUFF_LEN) {
+			netdev_dbg(dl->dev, "LIN_RX[%d]: 0x%02x\n", dl->rx_cnt, *cp);
+			dl->rx_buff[dl->rx_cnt++] = *cp++;
+		}
+	}
+
+
+	if (dl->rx_cnt >= dl->rx_expect) {
+	  set_bit(DLF_RXEVENT, &dl->flags); //RX wake event
+	  wake_up(&dl->kwt_wq);
+	  netdev_dbg(dl->dev, "dlin_receive_buf count %d, wakeup\n", dl->rx_cnt);
+	}
+	else {
+	  netdev_dbg(dl->dev, "sllin_receive_buf count %d, waiting\n", dl->rx_cnt);
+	}
+}
+
+
+/*****************************************
+ *  dlin message helper routines
+ *****************************************/
+/**
+ *  dlin_report_error() -- Report an error by sending CAN frame
+ *	with particular error flag set in can_id
+ *
+ * @sl:
+ * @err: Error flag to be sent.
+ */
+static void dlin_report_error(struct dlin *dl, int err)
+{
+	unsigned char *lin_buff;
+	int lin_id;
+
+	switch (err) {
+	case LIN_ERR_CHECKSUM:
+		dl->dev->stats.rx_crc_errors++;
+		break;
+
+	case LIN_ERR_RX_TIMEOUT:
+		dl->dev->stats.rx_errors++;
+		break;
+
+	case LIN_ERR_FRAMING:
+		dl->dev->stats.rx_frame_errors++;
+		break;
+	}
+
+	lin_buff = (dl->lin_master) ? dl->tx_buff : dl->rx_buff;
+	lin_id = lin_buff[DLIN_BUFF_ID] & LIN_ID_MASK;
+	dlin_send_canfr(dl, lin_id | CAN_EFF_FLAG |
+		(err & ~LIN_ID_MASK), NULL, 0);
+}
+
+
 /**
  * DLIN_configure_frame_cache() -- Configure particular entry in linfr_cache
  *
@@ -366,6 +529,39 @@ static int dlin_configure_frame_cache(struct dlin *dl, struct can_frame *cf)
       return 0;
 }
 
+/**
+ * dlin_checksum() -- Count checksum for particular data
+ *
+ * @data:	 Pointer to the buffer containing whole LIN
+ *		 frame (i.e. including break and sync bytes).
+ * @length:	 Length of the buffer.
+ * @enhanced_fl: Flag determining whether Enhanced or Classic
+ *		 checksum should be counted.
+ *CHECKSUM: There are two checksum-models available within LIN -
+ *The first is the checksum including the data bytes only (specification up to Version 1.3),
+ *the second one includes the identifier in addition (Version 2.0+).
+ *The used checksum model is pre-defined by the application designer.
+ */
+
+static inline unsigned dlin_checksum(unsigned char *data, int length, int enhanced_fl)
+{
+	unsigned csum = 0;
+	int i;
+
+	if (enhanced_fl)
+		i = DLIN_BUFF_ID;
+	else
+		i = DLIN_BUFF_DATA;
+
+	for (; i < length; i++) { // warning
+		csum += data[i];
+		if (csum > 255)
+			csum -= 255;
+	}
+
+	return ~csum & 0xff;
+}
+
 #define DLIN_STPMSG_RESPONLY		(1) /* Message will be LIN Response only */
 #define DLIN_STPMSG_CHCKSUM_CLS	(1 << 1)
 #define DLIN_STPMSG_CHCKSUM_ENH	(1 << 2)
@@ -376,29 +572,247 @@ static int dlin_setup_msg(struct dlin *dl, int mode, int id,
 	if (id > LIN_ID_MASK)
 		return -1;
 
-	if (!(mode & DLIN_STPMSG_RESPONLY)) {
-		dl->rx_cnt = 0;
+	if (!(mode & DLIN_STPMSG_RESPONLY)) { /* select the responly mode, we don't expect to receive pckt*/
+		dl->rx_cnt = 0; /* init counters */
 		dl->tx_cnt = 0;
 		dl->rx_expect = 0;
 		dl->rx_lim = DLIN_BUFF_LEN;
 	}
 
-	dl->tx_buff[DLIN_BUFF_BREAK] = 0;
-	dl->tx_buff[DLIN_BUFF_SYNC]  = 0x55;
+	dl->tx_buff[DLIN_BUFF_BREAK] = 0; /*those consts are made up to select one element of the tx_buff array */
+	dl->tx_buff[DLIN_BUFF_SYNC]  = 0x55; /* SYNC: The SYNC is a standard data format byte with a value of hexadecimal 0x55.
+																				*LIN slaves running on RC oscillator will use the distance between a fixed amount of rising and falling edges
+	                                      * to measure the current bit time on the bus (the master's time normal) and to recalculate the internal baud rate.
+																				*/
+
 	dl->tx_buff[DLIN_BUFF_ID]    = id | dlin_id_parity_table[id];
-	dl->tx_lim = DLIN_BUFF_DATA;
+	dl->tx_lim = DLIN_BUFF_DATA; /* = 3 because we already sent 3 bytes */
 
 	if ((data != NULL) && len) {
-		dl->tx_lim += len;
+		dl->tx_lim += len; /* if we have some data to send, we extend the tx_lim by len */
 		memcpy(dl->tx_buff + DLIN_BUFF_DATA, data, len);
 		dl->tx_buff[dl->tx_lim] = dlin_checksum(dl->tx_buff,
-				dl->tx_lim, mode & DLIN_STPMSG_CHCKSUM_ENH);
-		dl->tx_lim++;
+				dl->tx_lim, mode & DLIN_STPMSG_CHCKSUM_ENH); /* we add at the end of the buffer a checksum */
+		dl->tx_lim++; /* the total length extends by one */
 	}
 	if (len != 0)
-		dl->rx_lim = DLIN_BUFF_DATA + len + 1;
+		dl->rx_lim = DLIN_BUFF_DATA + len + 1; /* set up the max receiving buffer */
 
 	return 0;
+}
+/*Reset buffer of the DLIN channel*/
+static void dlin_reset_buffs(struct dlin *dl)
+{
+	dl->rx_cnt = 0;
+	dl->rx_expect = 0;
+	dl->rx_lim = dl->lin_master ? 0 : DLIN_BUFF_LEN;
+	dl->tx_cnt = 0;
+	dl->tx_lim = 0;
+	dl->id_to_send = false;
+	dl->data_to_send = false;
+}
+
+/**
+ * sllin_rx_validate() -- Validate received frame, i,e. check checksum
+ *
+ * @sl:
+ */
+static int dlin_rx_validate(struct dlin *dl)
+{
+	unsigned long flags;
+	int actual_id;
+	int ext_chcks_fl;
+	int lin_dlc;
+	unsigned char rec_chcksm = dl->rx_buff[dl->rx_cnt - 1]; /* we select the checksum in the array to validate with the calculus*/
+	struct dlin_conf_entry *sce;
+
+	actual_id = dl->rx_buff[DLIN_BUFF_ID] & LIN_ID_MASK;
+	sce = &dl->linfr_cache[actual_id]; /*select the ID of the frame */
+
+	spin_lock_irqsave(&dl->linframe_lock, flags);
+	lin_dlc = sce->dlc; /*length of data in LIN frame */
+	ext_chcks_fl = sce->frame_fl & LIN_CHECKSUM_EXTENDED;
+	spin_unlock_irqrestore(&dl->linframe_lock, flags);
+
+	if (dlin_checksum(dl->rx_buff, dl->rx_cnt - 1, ext_chcks_fl) !=
+		rec_chcksm) {
+
+		/* Type of checksum is configured for particular frame */
+		/* We can test the checksum with the two methods (1.3) or (2.0)*/
+		if (lin_dlc > 0) {
+			return -1;
+		} else {
+			if (dlin_checksum(dl->rx_buff,	dl->rx_cnt - 1,
+				!ext_chcks_fl) != rec_chcksm) {
+				return -1;
+			}
+		}
+	}
+	return 0;
+}
+
+static int dlin_send_tx_buff(struct dlin *dl)
+{
+	struct tty_struct *tty = dl->tty;
+	int remains;
+	int res;
+
+	set_bit(DLF_TXBUFF_RQ, &dl->flags); //Request to send buffer to UART
+	do {
+	       /* if false set the flag that the request above is in progress*/
+		if (unlikely(test_and_set_bit(DLF_TXBUFF_INPR, &dl->flags)))
+			return 0;
+
+		clear_bit(DLF_TXBUFF_RQ, &dl->flags);
+
+		//smp_mb__after_clear_bit(); //< KERNEL_VERSION(3, 18, 0)
+		smp_mb__after_atomic();
+
+#ifdef BREAK_BY_BAUD
+		if (dl->lin_state != DLSTATE_BREAK_SENT)
+		  remains = dl->tx_lim - dl->tx_cnt; //bytes remaining to Tx
+		else
+		  remains = 1;
+#else
+		remains = dl->tx_lim - dl->tx_cnt; //bytes remaining to Tx
+#endif
+
+		res = tty->ops->write(tty, dl->tx_buff + dl->tx_cnt, remains);
+		// number of char written (tty, msg, length(msg))
+
+		if (res < 0)
+			goto error_in_write;
+
+		remains -= res;
+		dl->tx_cnt += res; //bytes already Tx + char just written
+
+		if (remains > 0) {
+			set_bit(TTY_DO_WRITE_WAKEUP, &tty->flags);
+			res = tty->ops->write(tty, dl->tx_buff + dl->tx_cnt, remains);
+
+			if (res < 0) {
+				clear_bit(TTY_DO_WRITE_WAKEUP, &tty->flags);
+				goto error_in_write;
+			}
+			remains -= res;
+			dl->tx_cnt += res;
+		}
+		
+
+		netdev_dbg(dl->dev, "sllin_send_tx_buff sent %d, remains %d\n",
+				dl->tx_cnt, remains);
+
+		clear_bit(DLF_TXBUFF_INPR, &dl->flags); //request process terminated
+
+		//smp_mb__after_clear_bit(); //< KERNEL_VERSION(3, 18, 0)
+		smp_mb__after_atomic();
+
+
+	} while (unlikely(test_bit(DLF_TXBUFF_RQ, &dl->flags)));
+
+	return 0;
+
+error_in_write:
+	clear_bit(DLF_TXBUFF_INPR, &dl->flags); //request process terminated
+	return -1;
+}
+
+
+
+
+#ifdef BREAK_BY_BAUD
+static int dlin_send_break(struct dlin *dl)
+{
+	struct tty_struct *tty = dl->tty;
+	unsigned long break_baud;
+	int res;
+
+	break_baud = ((dl->lin_baud * 2) / 3);
+	dlin_tty_change_speed(tty, break_baud); //change baudrate
+
+	tty->ops->flush_buffer(tty); // Discard all data in the send buffer
+
+	//Stop reception processus
+	dl->rx_cnt = DLIN_BUFF_BREAK;
+	dl->rx_expect = DLIN_BUFF_BREAK + 1;
+
+	// Change the lin_state and start the sending processus
+	dl->lin_state = DLSTATE_BREAK_SENT;
+	res = dlin_send_tx_buff(dl);
+
+	// if an error occured in dlin_send_tx_buff
+	if (res < 0) {
+		dl->lin_state = DLSTATE_IDLE;
+		return res;
+	}
+	return 0;
+}
+
+#else /* BREAK_BY_BAUD */
+
+static int dlin_send_break(struct dlin *dl)
+{
+	struct tty_struct *tty = dl->tty;
+	int retval;
+	unsigned long break_baud;
+	unsigned long usleep_range_min;
+	unsigned long usleep_range_max;
+
+	break_baud = ((dl->lin_baud * 2) / 3);
+	dl->rx_cnt = DLIN_BUFF_BREAK;
+	dl->rx_expect = DLIN_BUFF_BREAK + 1;
+	dl->lin_state = DSTATE_BREAK_SENT;
+
+	/* Do the break ourselves; Inspired by
+	   http://lxr.linux.no/#linux+v3.1.2/drivers/tty/tty_io.c#L2452 */
+
+	retval = tty->ops->break_ctl(tty, -1); //Turn break on
+	if (retval)
+		return retval;
+
+	/* udelay(712); */
+	usleep_range_min = (1000000l * DLIN_SAMPLES_PER_CHAR) / break_baud;
+	usleep_range_max = usleep_range_min + 50;
+	usleep_range(usleep_range_min, usleep_range_max);
+
+	retval = tty->ops->break_ctl(tty, 0); //Turn break off
+	usleep_range_min = (1000000l * 1 /* 1 bit */) / break_baud;
+	usleep_range_max = usleep_range_min + 30;
+	usleep_range(usleep_range_min, usleep_range_max);
+
+	tty->ops->flush_buffer(tty); // Discard all data in the send buffer
+
+	dl->tx_cnt = DLIN_BUFF_SYNC;
+
+	netdev_dbg(dl->dev, "Break sent.\n");
+	set_bit(DLF_RXEVENT, &dl->flags); //Rx wake event
+	wake_up(&dl->kwt_wq);
+
+	return 0;
+}
+#endif /* BREAK_BY_BAUD */
+
+static enum hrtimer_restart dlin_rx_timeout_handler(struct hrtimer *hrtimer)
+{
+	struct dlin *dl = container_of(hrtimer, struct dlin, rx_timer);
+
+	/*
+	 * Signal timeout when:
+	 * master: We did not receive as much characters as expected
+	 * slave: * we did not receive any data bytes at all
+	 *        * we know the length and didn't receive enough            (remove)
+	 */
+	if ((dl->lin_master) ||
+			(dl->rx_cnt <= DLIN_BUFF_DATA) ||
+			((!dl->rx_len_unknown) &&
+			(dl->rx_cnt < dl->rx_expect))) {
+		dlin_report_error(dl, LIN_ERR_RX_TIMEOUT);
+		set_bit(DLF_TMOUTEVENT, &dl->flags);
+	}
+
+	wake_up(&dl->kwt_wq);
+
+	return HRTIMER_NORESTART;
 }
 
 
@@ -472,17 +886,6 @@ static struct dlin *dlin_tty_alloc(dev_t line)
           return dl;
 }
 
-/*Reset buffer of the DLIN channel*/
-static void dlin_reset_buffs(struct dlin *dl)
-{
-	dl->rx_cnt = 0;
-	dl->rx_expect = 0;
-	dl->rx_lim = dl->lin_master ? 0 : DLIN_BUFF_LEN;
-	dl->tx_cnt = 0;
-	dl->tx_lim = 0;
-	dl->id_to_send = false;
-	dl->data_to_send = false;
-}
 
 /* OPEN the high level part of the DLIN channel
 link the tty line discipline with a free DLIN channel*/
@@ -532,15 +935,52 @@ static int dlin_tty_hangup(struct tty_struct *tty) {
 	return 0;
 }
 
+/* Perform I/O control on an active DLIN channel. */
+static int dlin_ioctl(struct tty_struct *tty, struct file *file,
+		       unsigned int cmd, unsigned long arg)
+{
+	struct dlin *dl = (struct dlin *) tty->disc_data;
+	unsigned int tmp;
+
+	/* First make sure we're connected. */
+	if (!dl || dl->magic != DLIN_MAGIC)
+	  return -EINVAL; //Invalide argument = 22
+
+	switch (cmd) {
+	case SIOCGIFNAME: //0x8910   get iface name
+		tmp = strlen(dl->dev->name) + 1;
+		if (copy_to_user((void __user *)arg, dl->dev->name, tmp))
+		  return -EFAULT; // = 14 Bad address
+		return 0;
+
+	case SIOCSIFHWADDR: // 0x8924 set hardware address
+		return -EINVAL; //Invalide argument = 22
+
+	default:
+/**
+  *      tty_mode_ioctl          -       mode related ioctls
+  *      @tty: tty for the ioctl
+  *      @file: file pointer for the tty
+  *      @cmd: command
+  *      @arg: ioctl argument
+  *
+  *      Perform non line discipline specific mode control ioctls. This
+  *      is designed to be called by line disciplines to ensure they provide
+  *      consistent mode setting.
+  */
+		return tty_mode_ioctl(tty, file, cmd, arg);
+	}
+}
+
 static struct tty_ldisc_ops dlin_ldisc = {
-	.owner		= THIS_MODULE,
-	.name		  = "dlin",
-	.open		  = dlin_tty_open,
-	.close		= dlin_tty_release,
-	//.hangup		= dlin_hangup,
-	//.ioctl		= dlin_ioctl,
-	//.receive_buf	= dlin_receive_buf,
-	//.write_wakeup	= dlin_write_wakeup,
+	.owner				= THIS_MODULE,
+	.name		  		= "dlin",
+	.open		  		= dlin_tty_open,
+	.close				= dlin_tty_release,
+	.hangup				= dlin_tty_hangup,
+	.ioctl				= dlin_ioctl,
+	.receive_buf	= dlin_master_receive_buf,
+	.write_wakeup	= dlin_write_wakeup,
 };
 
 
@@ -569,7 +1009,58 @@ static int __init dlin_init_module(void) /* allocate the array of devices */
 
 static void __exit dlin_exit_module(void)
 {
+	int i;
+		struct net_device *dev;
+		struct dlin *dl;
+		unsigned long timeout = jiffies + HZ;
+		int busy = 0;
 
+		if (dlin_devs == NULL)
+			return;
+
+		/* First of all: check for active disciplines and hangup them.
+		 */
+		do {
+			if (busy)
+				msleep_interruptible(100);
+
+			busy = 0;
+			for (i = 0; i < maxdev; i++) {
+				dev = dlin_devs[i];
+				if (!dev)
+					continue;
+				dl = netdev_priv(dev);
+				spin_lock_bh(&dl->lock);
+				if (dl->tty) {
+					busy++;
+					tty_hangup(dl->tty); /* if we detect an active tty we close it */
+				}
+				spin_unlock_bh(&dl->lock);
+			}
+		} while (busy && time_before(jiffies, timeout)); /* if a timeout is detected we close */
+
+		for (i = 0; i < maxdev; i++) {
+			dev = dlin_devs[i];
+			if (!dev)
+				continue;
+			dlin_devs[i] = NULL; /* we erase the elemements of the dlin_devs array */
+
+			dl = netdev_priv(dev);
+			if (dl->tty) {
+				netdev_dbg(dl->dev, "tty discipline still running\n");
+				/* Intentionally leak the control block. */
+				dev->destructor = NULL;
+			}
+
+			unregister_netdev(dev);
+		}
+
+		kfree(dlin_devs); /* dealloc the array of devices */
+		dlin_devs = NULL;
+
+		i = tty_unregister_ldisc(N_DLIN); /*unregister the line disciplines it should return 0 */
+		if (i)
+	pr_err("dlin: can't unregister ldisc (err %d)\n", i);
 
   return;
 }
