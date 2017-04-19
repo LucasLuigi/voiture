@@ -42,4 +42,6 @@ f) Si besoin :
 	## Dans le dossier ~/fsl-community-bsp/build
 	bitbake core-image-minimal
 
+2) SDK du Bitbake :
 
+	bitbake core-image-minimal -c populate_sdk 
