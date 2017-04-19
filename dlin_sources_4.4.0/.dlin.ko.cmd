@@ -1,0 +1,1 @@
+cmd_/home/mathias/Documents/dlin/dlin.ko := ld -r -m elf_x86_64 -T ./scripts/module-common.lds --build-id  -o /home/mathias/Documents/dlin/dlin.ko /home/mathias/Documents/dlin/dlin.o /home/mathias/Documents/dlin/dlin.mod.o
