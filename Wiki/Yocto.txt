@@ -46,6 +46,6 @@ f) Si besoin :
 	
 	sudo dd if=build/tmp/deploy/images/wandboard-solo/core-image-minimal-wandboard-solo.sdcard of=/dev/sdb bs=1M #BIEN VERIFIER QUEL sdX C'EST
 
-2) SDK du Bitbake :
+3) SDK du Bitbake :
 
 	bitbake core-image-minimal -c populate_sdk 
