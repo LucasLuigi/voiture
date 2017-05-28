@@ -1,0 +1,7 @@
+https://community.nxp.com/docs/DOC-95252
+
+1) Modifs à faire : https://github.com/trainman419/linux-lin/blob/master/sllin/canutils-patches/0001-slcan_attach-Works-only-with-sllin-for-now.patch sur slcan.c : build/tmp/work/cortexa9hf-vfp-neon-poky-linux-gnueabi/can-utils/0.0+gitrAUTOINC+67a2bdcd33-r0/git
+
+2) Dans ce dossier : make (make all). Problème 1 : Mettre le arm-poky-linux-gnueabi-gcc dans le path. Il est dans le sysroot du build. Problème 2 : ce gcc marche pas pour compiler (il faut le SDK)
+
+

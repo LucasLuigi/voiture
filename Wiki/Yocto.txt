@@ -39,7 +39,7 @@ f) Si besoin :
 
 1) Faire le bitbake :
 
-	## Dans le dossier ~/fsl-community-bsp/build
+	## Dans le dossier fsl-community-bsp/build
 	bitbake core-image-minimal
 
 2) Flasher le fichier sur la carte SD :
@@ -49,3 +49,24 @@ f) Si besoin :
 3) SDK du Bitbake :
 
 	bitbake core-image-minimal -c populate_sdk 
+
+------------------------------------------------------------------------------------
+-Infos :
+------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------
+
+Problème lors de la compimation de alsa-utils. Solution : http://stackoverflow.com/questions/26238663/cannot-configure-alsa-utils-on-ti-am335x :
+
+	bitbake alsa-tools -c cleansstate
+	bitbake ncurses -c cleansstate #package qui a une librairie qui pose pb pour alsa-utils
+	bitbake alsa-tools
+	bitbake core-image-base
+
+------------------------------------------------------------------------------------
+
+Port série : La carte a ttymxc0 et ttymxc3, 2 embedded Freescale i.Mx ports.
+L'un est relié à une console avec la variable SERIAL_CONSOLE (http://www.yoctoproject.org/docs/1.3/poky-ref-manual/poky-ref-manual.html, plus d'infos http://www.yoctoproject.org/docs/1.8/ref-manual/ref-manual.html#ref-features-image, faire ctrl+F) qui est mise à SERIAL_CONSOLE = "115200 ttymxc0". (Dans meta-fsl-arm-extra/conf/machine/include/wandboard.inc inclus dans meta-fsl-arm-extra/conf/machine/wandboard-solo.conf). Trouver un moyen d'enlever ça pour rendre libre le RS232. Comment ? Attacher le mxc0/2 au port (device tree) ? Créer un ttyS0 ? (Plus d'infos : https://lists.yoctoproject.org/pipermail/yocto/2012-June/007049.html)
+
+------------------------------------------------------------------------------------
+
+A faire : refaire toutes les configs de 1 vers 2 (le .bb, le local.conf) et faire QUE le build.
