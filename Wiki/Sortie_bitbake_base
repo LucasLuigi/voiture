@@ -1,0 +1,32 @@
+bitbake core-image-base -c populate_sdk
+Loading cache: 100% |###########################################| ETA:  00:00:00
+Loaded 1828 entries from dependency cache.
+NOTE: Resolving any missing task queue dependencies
+
+Build Configuration:
+BB_VERSION        = "1.22.0"
+BUILD_SYS         = "x86_64-linux"
+NATIVELSBSTRING   = "Ubuntu-14.04"
+TARGET_SYS        = "arm-poky-linux-gnueabi"
+MACHINE           = "wandboard-solo"
+DISTRO            = "poky"
+DISTRO_VERSION    = "1.6.3"
+TUNE_FEATURES     = "armv7a vfp neon callconvention-hard cortexa9"
+TARGET_FPU        = "vfp-neon"
+meta              
+meta-yocto        = "(nobranch):39ec0738d4bdc566eca2724dc35c557955042242"
+meta-oe           = "(nobranch):d3d14d3fcca7fcde362cf0b31411dc4eea6d20aa"
+meta-fsl-arm      = "(nobranch):0c4de80867c3ab4e9682dd7802d3fd907d1e1a23"
+meta-fsl-arm-extra = "(nobranch):c95f3f8b5b347f1b3e77d2d11063207ddb7dc5ec"
+meta-fsl-demos    = "(nobranch):f141c7d1158b8addbd6f1ed047a1b47c2ed85f8f"
+
+NOTE: Preparing runqueue
+NOTE: Executing SetScene Tasks
+NOTE: Executing RunQueue Tasks
+WARNING: QA Issue: gcc-cross-canadian-arm: found library in wrong location: /opt/poky/1.6.3/sysroots/x86_64-pokysdk-linux/usr/libexec/arm-poky-linux-gnueabi/gcc/arm-poky-linux-gnueabi/4.8.2/liblto_plugin.so
+gcc-cross-canadian-arm: found library in wrong location: /opt/poky/1.6.3/sysroots/x86_64-pokysdk-linux/usr/libexec/arm-poky-linux-gnueabi/gcc/arm-poky-linux-gnueabi/4.8.2/liblto_plugin.so.0
+gcc-cross-canadian-arm: found library in wrong location: /opt/poky/1.6.3/sysroots/x86_64-pokysdk-linux/usr/libexec/arm-poky-linux-gnueabi/gcc/arm-poky-linux-gnueabi/4.8.2/liblto_plugin.so.0.0.0
+NOTE: Tasks Summary: Attempted 2815 tasks of which 2477 didn't need to be rerun and all succeeded.
+
+Summary: There was 1 WARNING message shown.
+
